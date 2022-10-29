@@ -121,6 +121,7 @@ async fn download_attachments(
         .map(|attachment| {
             let client = client.clone();
             let attachments_bar = attachments_bar.clone();
+            let boards_bar = boards_bar.clone();
             async move {
                 let mut data =
                     get_attachment(client, &attachment, cookie).await?;
@@ -129,13 +130,17 @@ async fn download_attachments(
                 fs::create_dir_all(&path).await?;
                 let mut file =
                     fs::File::create(path.join(attachment.name)).await?;
-                while let Some(bytes) = data.try_next().await? {
-                    file.write_all(bytes.chunk()).await?;
-                    attachments_bar.tick();
-                    boards_bar.tick();
-                }
-                attachments_bar.inc(1);
+                tokio::spawn(async move {
+                    while let Some(bytes) = data.try_next().await? {
+                        file.write_all(bytes.chunk()).await?;
+                        attachments_bar.tick();
+                        boards_bar.tick();
+                    }
+                    attachments_bar.inc(1);
 
+                    Ok::<(), eyre::Report>(())
+                })
+                .await??;
                 Ok::<(), eyre::Report>(())
             }
         });
