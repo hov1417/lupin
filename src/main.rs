@@ -1,6 +1,7 @@
 mod compression;
 mod config;
 mod get_board;
+mod progress;
 
 use crate::compression::compress_directory;
 use crate::config::get_configs;
