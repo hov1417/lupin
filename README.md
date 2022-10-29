@@ -17,7 +17,7 @@ auth_cookie: "..." # trello cookie, copy it from browser open trello.com login, 
 board_ids: # list of board ids to backup (you can get it from url https://trello.com/b/{board_id}/{board_name} )
   - "id1"
   - "id2"
-out_path: "~/trello-backup/" # path where lupin will make a trello backups
+out_path: "/home/hov1417/trello-backup/" # path where lupin will make a trello backups
 
 ```
 
