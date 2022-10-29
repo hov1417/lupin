@@ -1,6 +1,8 @@
 [package]
 name = "lupin"
 version = "0.1.0"
+license = "MIT"
+readme = "README.md"
 edition = "2021"
 authors = ["hov1417"]
 
