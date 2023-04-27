@@ -1,24 +1,28 @@
-mod compression;
-mod config;
-mod get_board;
-mod progress;
-
-use crate::compression::compress_directory;
-use crate::config::get_configs;
-use crate::get_board::get_boards;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use eyre::Result;
 use serde::Deserialize;
-use std::path::PathBuf;
-use tokio::fs::create_dir_all;
 
-#[derive(Debug, Parser)]
-pub struct LupinGet {}
+use crate::config::get_configs;
+use crate::telegram::task::LupinTelegramGet;
+use crate::trello::task::LupinTrelloGet;
 
-#[derive(Debug, Parser)]
-#[clap(author, version, about = "Cli tool to load data from trello")]
-pub enum Lupin {
-    Get(LupinGet),
+mod compression;
+mod config;
+mod progress;
+mod telegram;
+mod trello;
+
+#[derive(Debug, Clone, Parser)]
+#[command(author, version, about = "Cli tool to load data from trello")]
+pub struct Lupin {
+    #[command(subcommand)]
+    command: LupinSubcommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum LupinSubcommand {
+    Telegram(LupinTelegramGet),
+    Trello(LupinTrelloGet),
 }
 
 #[tokio::main]
@@ -27,20 +31,12 @@ async fn main() -> Result<()> {
 
     let config = get_configs().await?;
 
-    match command {
-        Lupin::Get(_) => {
-            let temp_dir = temp_dir::TempDir::new()?;
-            get_boards(&config.board_ids, temp_dir.path(), &config.auth_cookie)
-                .await?;
-            create_dir_all(&config.out_path).await?;
-            compress_directory(
-                temp_dir.path().to_path_buf(),
-                PathBuf::from(config.out_path).join(format!(
-                    "{}.tar.zst",
-                    chrono::Local::today().format("%Y-%m-%d")
-                )),
-            )
-            .await?;
+    match command.command {
+        LupinSubcommand::Trello(arg) => {
+            arg.execute(&config).await?;
+        }
+        LupinSubcommand::Telegram(arg) => {
+            arg.execute().await?;
         }
     }
 

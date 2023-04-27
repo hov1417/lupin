@@ -1,6 +1,6 @@
 [package]
 name = "lupin"
-version = "0.1.0"
+version = "0.2.0"
 license = "MIT"
 readme = "README.md"
 edition = "2021"
@@ -10,7 +10,7 @@ authors = ["hov1417"]
 bytes = "1.2.1"
 chrono = "0.4.22"
 clap = { version = "4.0.18", features = ["cargo", "derive"] }
-dirs = "4.0.0"
+dirs = "5.0.0"
 eyre = "0.6.8"
 futures = "0.3.25"
 indicatif = "0.17.1"
@@ -22,4 +22,4 @@ serde_yaml = "0.9.14"
 tar = "0.4.38"
 temp-dir = "0.1.11"
 tokio = { version = "1.21.2", features = ["io-std", "fs", "macros", "rt-multi-thread"] }
-zstd = { version = "0.11.2", features = ["zstdmt"] }
+zstd = { version = "0.12.3", features = ["zstdmt"] }

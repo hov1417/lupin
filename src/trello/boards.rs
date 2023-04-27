@@ -14,7 +14,7 @@ use serde::Deserialize;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-pub async fn get_boards(
+pub(super) async fn get_boards(
     board_ids: &[String],
     out_path: &Path,
     auth_cookie: &str,
