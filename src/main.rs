@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
             arg.execute(&config).await?;
         }
         LupinSubcommand::Telegram(arg) => {
-            arg.execute().await?;
+            arg.execute(&config).await?;
         }
     }
 

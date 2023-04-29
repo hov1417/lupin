@@ -11,12 +11,16 @@ pub struct TrelloConfig {
 
 #[derive(Default, Deserialize)]
 pub struct TelegramConfig {
+    pub app_id: i32,
+    pub app_hash: String,
     // TODO
 }
 
 #[derive(Default, Deserialize)]
 pub struct LupinConfig {
+    #[serde(default)]
     pub trello_config: TrelloConfig,
+    #[serde(default)]
     pub telegram_config: TelegramConfig,
 }
 
