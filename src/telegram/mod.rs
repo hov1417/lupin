@@ -1,5 +1,5 @@
-pub mod task;
-mod message;
+mod auth;
 mod backup;
 mod media;
-mod auth;
+mod message;
+pub mod task;

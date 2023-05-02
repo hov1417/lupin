@@ -13,6 +13,7 @@ pub struct LupinTrelloGet {}
 
 impl LupinTrelloGet {
     pub async fn execute(&self, config: &LupinConfig) -> eyre::Result<()> {
+        // TODO remove temp_dir, directly compress to out_path
         let temp_dir = temp_dir::TempDir::new()?;
         get_boards(
             &config.trello_config.board_ids,

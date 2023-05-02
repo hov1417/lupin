@@ -13,10 +13,10 @@ pub fn get_file_extension(media: &types::Media) -> String {
 }
 
 pub fn get_mime_extension(mime_type: Option<&str>) -> String {
-    return mime_type
+    mime_type
         .map(|m| {
             let mime: Mime = m.parse().unwrap();
-            format!(".{}", mime.subtype().to_string())
+            format!(".{}", mime.subtype())
         })
-        .unwrap_or(String::new());
+        .unwrap_or(String::new())
 }

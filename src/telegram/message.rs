@@ -109,7 +109,9 @@ impl MessageReplies {
                 comments: r.comments,
                 replies: r.replies,
                 replies_pts: r.replies_pts,
-                recent_repliers: r.recent_repliers.map(|v| v.into_iter().map(Peer::from_enum).collect()),
+                recent_repliers: r
+                    .recent_repliers
+                    .map(|v| v.into_iter().map(Peer::from_enum).collect()),
                 channel_id: r.channel_id,
                 max_id: r.max_id,
                 read_max_id: r.read_max_id,
@@ -192,17 +194,12 @@ impl Message {
             grouped_id: msg.grouped_id(),
         }
     }
-
 }
 
 fn parse_sender(s: gr_types::Chat) -> Sender {
     match s {
         gr_types::Chat::User(u) => Sender::User(u.full_name()),
-        gr_types::Chat::Group(g) => {
-            Sender::Group(g.title().to_string())
-        }
-        gr_types::Chat::Channel(c) => {
-            Sender::Channel(c.title().to_string())
-        }
+        gr_types::Chat::Group(g) => Sender::Group(g.title().to_string()),
+        gr_types::Chat::Channel(c) => Sender::Channel(c.title().to_string()),
     }
 }

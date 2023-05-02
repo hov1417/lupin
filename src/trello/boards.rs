@@ -102,7 +102,7 @@ async fn download_attachments(
     boards_bar: &ProgressBar,
 ) -> Result<()> {
     let attachments_bar = new_progress_bar(
-        &mpb,
+        mpb,
         format!("Attachments for {}", board_info.name),
         0,
     );

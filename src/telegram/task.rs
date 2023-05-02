@@ -1,17 +1,16 @@
-use std::io;
-use std::io::{BufRead, Write};
 use std::path::Path;
 
 use clap::Parser;
 use eyre::{Context, Result};
 use futures::future::join_all;
 use grammers_client::types::Chat;
-use grammers_client::{Client, Config, SignInError};
-use grammers_session::Session;
+use grammers_client::Client;
+
 use grammers_tl_types::enums::Dialog;
 
 use crate::config::LupinConfig;
-use crate::telegram::backup::ChatBackup;
+use crate::telegram::auth::authenticate;
+use crate::telegram::backup::{DialogBackup, DialogType};
 
 use super::message::Message;
 
@@ -25,68 +24,45 @@ impl LupinTelegramGet {
     }
 }
 
-// TODO move to configs
-const SESSION_FILE: &str = "downloader.session";
-
 // TODO add logging
 
 // TODO integrate progress bar
 async fn download(configs: &LupinConfig) -> Result<()> {
-    let api_id = configs.telegram_config.app_id;
-    let api_hash = configs.telegram_config.app_hash.clone();
-
-    println!("Connecting to Telegram...");
-    let client = Client::connect(Config {
-        session: Session::load_file_or_create(SESSION_FILE)?,
-        api_id,
-        api_hash: api_hash.clone(),
-        params: Default::default(),
-    })
-    .await?;
-    println!("Connected!");
-
-    authenticate(api_id, &api_hash, &client).await?;
+    let client = authenticate(&configs.telegram_config).await?;
 
     let mut dialog_iter = client.iter_dialogs();
     tokio::fs::create_dir_all(Path::new("backup")).await?;
     let mut tasks = Vec::new();
     while let Some(dialog) = dialog_iter.next().await? {
-        match (dialog.dialog, &dialog.chat) {
-            (Dialog::Dialog(d), Chat::User(user)) if !user.is_bot() => {
-                let client = client.clone();
-                let file = format!("backup/telegram_{}.json", user.id());
-                let first_name = user.first_name().to_string();
-                let last_name = user.last_name().map(String::from);
-                let username = user.username().map(String::from);
-                let task = async move {
-                    let messages = download_chat(client, dialog.chat)
-                        .await
-                        .context("cannot download task")?;
-                    let backup = ChatBackup {
-                        first_name,
-                        last_name,
-                        username,
-                        messages,
-                    };
-                    tokio::fs::write(
-                        file,
-                        serde_json::to_string(&backup)
-                            .context("cannot serialize backups")?,
-                    )
-                    .await
-                    .context("cannot write to file")
-                };
+        if matches!(&dialog.dialog, Dialog::Folder(_)) {
+            //TODO make warning
+            println!("Dialog Folder: {:?}", dialog.dialog);
+            continue;
+        }
+        match &dialog.chat {
+            Chat::User(user) if !user.is_bot() => {
+                let task = download_dialog(
+                    client.clone(),
+                    format!("backup/telegram_user_{}.json", user.id()),
+                    user.first_name().to_string(),
+                    user.last_name().map(String::from),
+                    user.username().map(String::from),
+                    dialog.chat,
+                    DialogType::User,
+                );
                 tasks.push(task);
             }
-            (Dialog::Dialog(d), Chat::Group(group))
-                if !group.is_megagroup() =>
-            {
-                // TODO pack groups
-                println!("Group: {:?}", group.title());
-            }
-            (Dialog::Folder(d), _) => {
-                //TODO make warning
-                println!("Dialog Folder: {:?}", d);
+            Chat::Group(group) if !group.is_megagroup() => {
+                let task = download_dialog(
+                    client.clone(),
+                    format!("backup/telegram_group_{}.json", group.id()),
+                    group.title().to_string(),
+                    None,
+                    group.username().map(String::from),
+                    dialog.chat,
+                    DialogType::Group,
+                );
+                tasks.push(task);
             }
             _ => {}
         }
@@ -103,41 +79,31 @@ async fn download(configs: &LupinConfig) -> Result<()> {
     Ok(())
 }
 
-async fn authenticate(
-    api_id: i32,
-    api_hash: &String,
-    client: &Client,
+async fn download_dialog(
+    client: Client,
+    file: String,
+    name: String,
+    last_name: Option<String>,
+    username: Option<String>,
+    chat: Chat,
+    dialog_type: DialogType,
 ) -> Result<()> {
-    if !client.is_authorized().await? {
-        println!("Signing in...");
-        let phone = prompt("Enter your phone number (international format): ")?;
-        let token =
-            client.request_login_code(&phone, api_id, &api_hash).await?;
-        let code = prompt("Enter the code you received: ")?;
-        let signed_in = client.sign_in(&token, &code).await;
-        match signed_in {
-            Err(SignInError::PasswordRequired(password_token)) => {
-                // Note: this `prompt` method will echo the password in the console.
-                //       Real code might want to use a better way to handle this.
-                let hint = password_token.hint().unwrap();
-                let prompt_message =
-                    format!("Enter the password (hint {}): ", &hint);
-                let password = prompt(prompt_message.as_str())?;
-
-                client
-                    .check_password(password_token, password.trim())
-                    .await?;
-            }
-            Ok(_) => (),
-            Err(e) => panic!("{}", e),
-        };
-        println!("Signed in!");
-        client
-            .session()
-            .save_to_file(SESSION_FILE)
-            .context("failed to save the session")?;
+    let messages = download_chat(client, chat)
+        .await
+        .context("cannot download task")?;
+    let backup = DialogBackup {
+        name,
+        last_name,
+        username,
+        messages,
+        dialog_type,
     };
-    Ok(())
+    tokio::fs::write(
+        file,
+        serde_json::to_string(&backup).context("cannot serialize backups")?,
+    )
+    .await
+    .context("cannot write to file")
 }
 
 async fn download_chat(client: Client, chat: Chat) -> Result<Vec<Message>> {
@@ -162,18 +128,4 @@ async fn download_chat(client: Client, chat: Chat) -> Result<Vec<Message>> {
     }
 
     Ok(messages)
-}
-
-fn prompt(message: &str) -> Result<String> {
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    stdout.write_all(message.as_bytes())?;
-    stdout.flush()?;
-
-    let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-
-    let mut line = String::new();
-    stdin.read_line(&mut line)?;
-    Ok(line)
 }
