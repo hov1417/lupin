@@ -6,7 +6,12 @@ readme = "README.md"
 edition = "2021"
 authors = ["hov1417"]
 
+[[bench]]
+name = "compression"
+harness = false
+
 [dependencies]
+async-compression = { version = "0.4.0", features = ["tokio", "zstd"] }
 bytes = "1.2.1"
 chrono = { version = "0.4.22", features = ["serde"] }
 clap = { version = "4.0.18", features = ["cargo", "derive"] }
@@ -34,3 +39,8 @@ tracing-appender = "0.2.2"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "fmt", "time", "json"] }
 zstd = { version = "0.12.3", features = ["zstdmt"] }
+
+[dev-dependencies]
+criterion = { version = "0.4.0", features = ["async_tokio"] }
+rand = "0.8.5"
+
