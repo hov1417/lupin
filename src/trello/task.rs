@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use indicatif::MultiProgress;
 use tokio::fs::create_dir_all;
 
 use crate::compression::compress_directory;
@@ -12,10 +13,15 @@ use crate::trello::boards::get_boards;
 pub struct LupinTrelloGet {}
 
 impl LupinTrelloGet {
-    pub async fn execute(&self, config: &LupinConfig) -> eyre::Result<()> {
+    pub async fn execute(
+        &self,
+        config: &LupinConfig,
+        mpb: MultiProgress,
+    ) -> eyre::Result<()> {
         // TODO remove temp_dir, directly compress to out_path
         let temp_dir = temp_dir::TempDir::new()?;
         get_boards(
+            &mpb,
             &config.trello_config.board_ids,
             temp_dir.path(),
             &config.trello_config.auth_cookie,

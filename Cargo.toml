@@ -10,15 +10,16 @@ authors = ["hov1417"]
 bytes = "1.2.1"
 chrono = { version = "0.4.22", features = ["serde"] }
 clap = { version = "4.0.18", features = ["cargo", "derive"] }
+console = "0.15.5"
 dirs = "5.0.0"
 eyre = "0.6.8"
 futures = { version = "0.3.25", features = ["std"] }
-mime_guess = "2.0.4"
+lazy_static = "1.4.0"
 mime = "0.3.17"
 grammers-client = "0.4.0"
 grammers-session = "0.4.0"
 grammers-tl-types = "0.4.0"
-indicatif = "0.17.1"
+indicatif = { version = "0.17.1", features = ["improved_unicode"] }
 itertools = "0.10.5"
 reqwest = { version = "0.11.12", features = ["gzip", "stream"] }
 rpassword = "7.2.0"
@@ -28,4 +29,8 @@ serde_yaml = "0.9.14"
 tar = "0.4.38"
 temp-dir = "0.1.11"
 tokio = { version = "1.21.2", features = ["io-std", "fs", "macros", "rt-multi-thread"] }
+tracing = "0.1.37"
+tracing-appender = "0.2.2"
+tracing-error = "0.2.0"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter", "fmt", "time", "json"] }
 zstd = { version = "0.12.3", features = ["zstdmt"] }

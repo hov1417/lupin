@@ -4,6 +4,7 @@ use grammers_client::{Client, Config, SignInError};
 use grammers_session::Session;
 use std::io;
 use std::io::{BufRead, Write};
+use tracing::info;
 
 pub async fn authenticate(telegram_config: &TelegramConfig) -> Result<Client> {
     let api_id = telegram_config.api_id;
@@ -26,7 +27,7 @@ pub async fn authenticate(telegram_config: &TelegramConfig) -> Result<Client> {
     if client.is_authorized().await? {
         return Ok(client);
     }
-    println!("Signing in...");
+    info!("Signing in to telegram ...");
     let phone = prompt("Enter your phone number (international format): ")?;
     let token = client.request_login_code(&phone, api_id, &api_hash).await?;
     let code = prompt("Enter the code you received: ")?;
@@ -49,7 +50,7 @@ pub async fn authenticate(telegram_config: &TelegramConfig) -> Result<Client> {
         Ok(_) => {}
         Err(e) => bail!("Sign in error: {}", e),
     };
-    println!("Signed in!");
+    info!("Signed in!");
     save_telegram_token(client.session().save())
         .await
         .context("failed to save the session")?;

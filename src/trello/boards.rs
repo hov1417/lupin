@@ -15,11 +15,11 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 pub(super) async fn get_boards(
+    mpb: &MultiProgress,
     board_ids: &[String],
     out_path: &Path,
     auth_cookie: &str,
 ) -> Result<()> {
-    let mpb = MultiProgress::new();
     let client = reqwest::Client::new();
     let boards_bar = new_progress_bar(&mpb, "Boards", board_ids.len() as u64);
     let load_boards = board_ids
@@ -119,6 +119,7 @@ async fn download_attachments(
             attachments
         })
         .map(|attachment| {
+            // TODO: refactor this lambda
             let client = client.clone();
             let attachments_bar = attachments_bar.clone();
             let boards_bar = boards_bar.clone();
@@ -131,10 +132,14 @@ async fn download_attachments(
                 let mut file =
                     fs::File::create(path.join(attachment.name)).await?;
                 tokio::spawn(async move {
+                    let mut n = 0;
                     while let Some(bytes) = data.try_next().await? {
                         file.write_all(bytes.chunk()).await?;
-                        attachments_bar.tick();
-                        boards_bar.tick();
+                        if n % 10 == 0 {
+                            attachments_bar.tick();
+                            boards_bar.tick();
+                        }
+                        n += 1;
                     }
                     attachments_bar.inc(1);
 

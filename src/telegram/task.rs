@@ -7,6 +7,7 @@ use grammers_client::types::Chat;
 use grammers_client::Client;
 
 use grammers_tl_types::enums::Dialog;
+use tracing::{error, info};
 
 use crate::config::LupinConfig;
 use crate::telegram::auth::authenticate;
@@ -36,7 +37,7 @@ async fn download(configs: &LupinConfig) -> Result<()> {
     while let Some(dialog) = dialog_iter.next().await? {
         if matches!(&dialog.dialog, Dialog::Folder(_)) {
             //TODO make warning
-            println!("Dialog Folder: {:?}", dialog.dialog);
+            info!("Dialog Folder: {:?}", dialog.dialog);
             continue;
         }
         match &dialog.chat {
@@ -72,7 +73,7 @@ async fn download(configs: &LupinConfig) -> Result<()> {
 
     for result in results {
         if let Err(e) = result {
-            println!("Error: {}", e);
+            error!("Error: {}", e);
         }
     }
 
