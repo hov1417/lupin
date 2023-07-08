@@ -6,19 +6,17 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use eyre::Context;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
+use rand::{Rng, thread_rng};
 use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
 use zstd::Encoder;
 
 use lupin::compression::compress_files;
 
-lazy_static! {
-    static ref FILES: Arc<[(String, Vec<u8>)]> =
-        get_files(100, 1_000_000).into();
-}
+static FILES: Lazy<Arc<[(String, Vec<u8>)]>> =
+    Lazy::new(|| get_files(100, 1_000_000).into());
 
 pub fn finish_archive(writer: &mut impl Write) -> eyre::Result<()> {
     writer.write_all(&[0; 1024]).context("could not write file")

@@ -29,7 +29,7 @@ pub async fn authenticate(telegram_config: &TelegramConfig) -> Result<Client> {
     }
     info!("Signing in to telegram ...");
     let phone = prompt("Enter your phone number (international format): ")?;
-    let token = client.request_login_code(&phone, api_id, &api_hash).await?;
+    let token = client.request_login_code(&phone).await?;
     let code = prompt("Enter the code you received: ")?;
     let signed_in = client.sign_in(&token, &code).await;
     match signed_in {

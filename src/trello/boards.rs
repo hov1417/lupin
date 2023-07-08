@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use crate::progress::new_progress_bar;
@@ -6,6 +7,7 @@ use bytes::Bytes;
 use eyre::Result;
 use futures::future::try_join_all;
 use futures::{Stream, TryStreamExt};
+use grammers_tl_types::Serializable;
 use indicatif::{MultiProgress, ProgressBar};
 use itertools::Itertools;
 use reqwest::header;
@@ -13,13 +15,20 @@ use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
+use lupin::compression::Compressor;
 
-pub(super) async fn get_boards(
+pub(super) async fn get_boards<F, Fut>(
     mpb: &MultiProgress,
     board_ids: &[String],
+    save_file: F,
     out_path: &Path,
     auth_cookie: &str,
-) -> Result<()> {
+) -> Result<()>
+where
+    F: Fn((&str, Vec<u8>)) -> Fut + Sync + 'static,
+    Fut: Future<Output = Result<()>>,
+{
     let client = reqwest::Client::new();
     let boards_bar = new_progress_bar(&mpb, "Boards", board_ids.len() as u64);
     let load_boards = board_ids
@@ -29,14 +38,12 @@ pub(super) async fn get_boards(
 
             let board_info: Board = serde_json::from_str(&board)?;
 
-            fs::create_dir_all(out_path).await?;
-            let path = PathBuf::from(out_path)
-                .join(format!("{}.json", board_info.name));
-            let mut file = fs::File::create(path).await?;
-            file.write_all(board.as_bytes()).await?;
+            save_file((&format!("{}.json", board_info.name), board.to_bytes()))
+                .await?;
             download_attachments(
                 &client,
                 board_info,
+                // save_file,
                 out_path,
                 auth_cookie,
                 &mpb,
@@ -96,11 +103,13 @@ pub async fn get_board(
 async fn download_attachments(
     client: &reqwest::Client,
     board_info: Board<'_>,
+    // compressor: Mutex<Compressor>,
     out_path: &Path,
     cookie: &str,
     mpb: &MultiProgress,
     boards_bar: &ProgressBar,
-) -> Result<()> {
+) -> Result<()>
+{
     let attachments_bar = new_progress_bar(
         mpb,
         format!("Attachments for {}", board_info.name),
@@ -115,7 +124,9 @@ async fn download_attachments(
                 .into_iter()
                 .filter(|a| !a.name.starts_with("http"))
                 .collect_vec();
-            attachments_bar.inc_length(attachments.len() as u64);
+            if attachments.len() != 0 {
+                attachments_bar.inc_length(attachments.len() as u64);
+            }
             attachments
         })
         .map(|attachment| {
@@ -124,28 +135,51 @@ async fn download_attachments(
             let attachments_bar = attachments_bar.clone();
             let boards_bar = boards_bar.clone();
             async move {
-                let mut data =
+                let (length, mut data) =
                     get_attachment(client, &attachment, cookie).await?;
-
-                let path = PathBuf::from(out_path).join(board_info.name);
-                fs::create_dir_all(&path).await?;
-                let mut file =
-                    fs::File::create(path.join(attachment.name)).await?;
-                tokio::spawn(async move {
-                    let mut n = 0;
-                    while let Some(bytes) = data.try_next().await? {
-                        file.write_all(bytes.chunk()).await?;
-                        if n % 10 == 0 {
-                            attachments_bar.tick();
-                            boards_bar.tick();
+                // let attachment_data = Vec::new();
+                let path = format!("{}/{}", board_info.name, attachment.name);
+                if let Some(length) = length {
+                    // let comp = compressor.lock().await;
+                    let mut file =
+                        fs::File::create(PathBuf::from(out_path).join(attachment.name)).await?;
+                    tokio::spawn(async move {
+                        let mut n = 0;
+                        while let Some(bytes) = data.try_next().await? {
+                            file.write_all(bytes.chunk()).await?;
+                            if n % 10 == 0 {
+                                attachments_bar.tick();
+                                boards_bar.tick();
+                            }
+                            n += 1;
                         }
-                        n += 1;
-                    }
-                    attachments_bar.inc(1);
+                        attachments_bar.inc(1);
 
-                    Ok::<(), eyre::Report>(())
-                })
-                .await??;
+                        Ok::<(), eyre::Report>(())
+                    })
+                        .await??;
+                } else {
+                    let path = PathBuf::from(out_path).join(board_info.name);
+                    fs::create_dir_all(&path).await?;
+                    let mut file =
+                        fs::File::create(path.join(attachment.name)).await?;
+                    tokio::spawn(async move {
+                        let mut n = 0;
+                        while let Some(bytes) = data.try_next().await? {
+                            file.write_all(bytes.chunk()).await?;
+                            if n % 10 == 0 {
+                                attachments_bar.tick();
+                                boards_bar.tick();
+                            }
+                            n += 1;
+                        }
+                        attachments_bar.inc(1);
+
+                        Ok::<(), eyre::Report>(())
+                    })
+                        .await??;
+                }
+
                 Ok::<(), eyre::Report>(())
             }
         });
@@ -165,17 +199,12 @@ async fn get_attachment(
     client: reqwest::Client,
     attachment: &Attachment<'_>,
     cookie: &str,
-) -> Result<impl Stream<Item = reqwest::Result<Bytes>>> {
+) -> Result<(Option<u64>, impl Stream<Item = reqwest::Result<Bytes>>)> {
     let headers = get_headers(cookie)?;
 
-    let res = client
-        .get(attachment.url)
-        .headers(headers)
-        .send()
-        .await?
-        .bytes_stream();
+    let res = client.get(attachment.url).headers(headers).send().await?;
 
-    Ok(res)
+    Ok((res.content_length(), res.bytes_stream()))
 }
 
 fn get_headers(cookie: &str) -> Result<HeaderMap> {

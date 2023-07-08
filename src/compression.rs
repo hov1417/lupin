@@ -1,6 +1,8 @@
+use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,6 +10,7 @@ use async_compression::tokio::write::ZstdEncoder;
 use eyre::{bail, Context};
 use tar::Builder;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::{error, warn};
 use zstd::Encoder;
@@ -46,7 +49,16 @@ pub struct Compressor {
     closed: bool,
 }
 
+impl Debug for Compressor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Compressor")
+            .field("closed", &self.closed)
+            .finish()
+    }
+}
+
 impl Compressor {
+    #[tracing::instrument]
     pub async fn new(out_file: &Path) -> eyre::Result<Self> {
         let file = tokio::fs::File::create(out_file)
             .await
@@ -62,7 +74,35 @@ impl Compressor {
         })
     }
 
+    #[tracing::instrument]
     pub async fn add_file(
+        &mut self,
+        name: &str,
+        path: &Path,
+    ) -> eyre::Result<()> {
+        let metadata = tokio::fs::metadata(path)
+            .await
+            .context("Cannot open the file")?;
+
+        self.write_tar_header(name, metadata.len())
+            .await
+            .context("could not write header")?;
+        let mut file = tokio::fs::File::open(path)
+            .await
+            .context("Cannot open file")?;
+        tokio::io::copy(&mut file, &mut self.writer)
+            .await
+            .context("Cannot copy file")?;
+
+        self.write_tar_footer(metadata.len())
+            .await
+            .context("could not write header")?;
+
+        Ok(())
+    }
+
+    #[tracing::instrument]
+    pub async fn add_file_with_data(
         &mut self,
         name: &str,
         data: &[u8],
@@ -77,6 +117,23 @@ impl Compressor {
             .context("could not write file")?;
 
         Ok(())
+    }
+
+    pub async fn add_chunked_file(
+        this: Arc<Mutex<Self>>,
+        name: &str,
+        size: u64,
+    ) -> eyre::Result<ChunkedCompressor> {
+        this.lock()
+            .await
+            .write_tar_header(name, size)
+            .await
+            .context("could not write header")?;
+
+        Ok(ChunkedCompressor {
+            compressor: this,
+            remaining: size,
+        })
     }
 
     pub async fn finish(&mut self) -> eyre::Result<()> {
@@ -112,7 +169,10 @@ impl Compressor {
             .write_all(header.as_bytes())
             .await
             .context("could not write header")?;
+        Ok(())
+    }
 
+    async fn write_tar_footer(&mut self, data_len: u64) -> eyre::Result<()> {
         // Pad with zeros if necessary.
         let buf = [0; 512];
         let remaining = 512 - (data_len % 512);
@@ -142,13 +202,40 @@ impl Drop for Compressor {
     }
 }
 
+pub struct ChunkedCompressor {
+    compressor: Arc<Mutex<Compressor>>,
+    remaining: u64,
+}
+
+impl ChunkedCompressor {
+    pub async fn add_chunk(&mut self, data: &[u8]) -> eyre::Result<()> {
+        self.compressor
+            .lock()
+            .await
+            .writer
+            .write_all(data)
+            .await
+            .context("could not write file")?;
+        self.remaining -= data.len() as u64;
+        Ok(())
+    }
+}
+
+impl Drop for ChunkedCompressor {
+    fn drop(&mut self) {
+        if self.remaining > 0 {
+            error!("ChunkedCompressor was not closed");
+        }
+    }
+}
+
 pub async fn compress_files(
     files: &[(String, Vec<u8>)],
     out_file: &Path,
 ) -> eyre::Result<()> {
     let mut compressor = Compressor::new(out_file).await?;
     for (path, data) in files {
-        compressor.add_file(path, data).await?;
+        compressor.add_file_with_data(path, data).await?;
     }
     compressor.finish().await?;
     Ok(())

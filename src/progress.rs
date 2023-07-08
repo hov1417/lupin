@@ -2,15 +2,13 @@ use std::borrow::Cow;
 
 use console::style;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use lazy_static::lazy_static;
-use tracing::error;
+use once_cell::sync::Lazy;
 
-lazy_static! {
-    static ref PROGRESS_STYLE: ProgressStyle =
-        ProgressStyle::with_template(&get_template())
-            .unwrap()
-            .progress_chars("━━");
-}
+static PROGRESS_STYLE: Lazy<ProgressStyle> = Lazy::new(|| {
+    ProgressStyle::with_template(&get_template())
+        .unwrap()
+        .progress_chars("━━")
+});
 
 pub fn new_progress_bar(
     multi_progress: &MultiProgress,

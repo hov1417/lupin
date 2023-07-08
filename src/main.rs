@@ -51,7 +51,8 @@ async fn main() -> Result<()> {
     let command: Lupin = Lupin::parse();
     let mpb = MultiProgress::new();
 
-    let _guard = init_trace_logger(mpb.clone(), command.verbose, command.quiet).await?;
+    let _guard =
+        init_trace_logger(mpb.clone(), command.verbose, command.quiet).await?;
 
     let config = get_configs().await?;
 

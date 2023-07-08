@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use grammers_client::types as gr_types;
+use grammers_client::types::Media;
 use grammers_tl_types::enums;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Peer {
@@ -62,7 +64,8 @@ impl MessageFwdHeader {
 pub struct MessageReplyHeader {
     #[serde(default, skip_serializing_if = "is_false")]
     pub reply_to_scheduled: bool,
-    pub reply_to_msg_id: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to_msg_id: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to_peer_id: Option<Peer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -70,14 +73,18 @@ pub struct MessageReplyHeader {
 }
 
 impl MessageReplyHeader {
-    fn parse(repl: enums::MessageReplyHeader) -> Self {
+    fn parse(repl: enums::MessageReplyHeader) -> Option<Self> {
         match repl {
-            enums::MessageReplyHeader::Header(h) => MessageReplyHeader {
+            enums::MessageReplyHeader::Header(h) => Some(MessageReplyHeader {
                 reply_to_scheduled: h.reply_to_scheduled,
                 reply_to_msg_id: h.reply_to_msg_id,
                 reply_to_peer_id: h.reply_to_peer_id.map(Peer::from_enum),
                 reply_to_top_id: h.reply_to_top_id,
-            },
+            }),
+            enums::MessageReplyHeader::MessageReplyStoryHeader(_) => {
+                warn!("MessageReplyStoryHeader is not supported");
+                None
+            }
         }
     }
 }
@@ -159,18 +166,17 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forward_count: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reply_count: Option<MessageReplies>,
+    pub reply_count: Option<i32>, //MessageReplies>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edit_date: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grouped_id: Option<i64>,
-    // media: Option<Media>,
 }
 
 impl Message {
-    pub fn parse(msg: gr_types::Message) -> Self {
+    pub fn parse(msg: &gr_types::Message) -> Self {
         Message {
             id: msg.id(),
             text: msg.text().to_string(),
@@ -186,9 +192,9 @@ impl Message {
             sender: msg.sender().map(parse_sender),
             forward_header: msg.forward_header().map(MessageFwdHeader::parse),
             via_bot_id: msg.via_bot_id(),
-            reply_to: msg.reply_header().map(MessageReplyHeader::parse),
+            reply_to: msg.reply_header().and_then(MessageReplyHeader::parse),
             forward_count: msg.forward_count(),
-            reply_count: msg.reply_count().map(MessageReplies::parse),
+            reply_count: msg.reply_count(), //.map(MessageReplies::parse),
             edit_date: msg.edit_date(),
             post_author: msg.post_author().map(String::from),
             grouped_id: msg.grouped_id(),
