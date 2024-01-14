@@ -16,3 +16,9 @@ pub struct DialogBackup {
     pub messages: Vec<Message>,
     pub dialog_type: DialogType,
 }
+
+impl DialogBackup {
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+}

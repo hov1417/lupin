@@ -1,15 +1,12 @@
-use std::any::Any;
 use std::io;
-use std::io::Error;
 use std::path::Path;
 
 use clap::Parser;
 use eyre::{Context, Result};
 use futures::future::join_all;
+use grammers_client::Client;
 use grammers_client::client::chats::InvocationError;
 use grammers_client::types::{Chat, Downloadable, Media};
-use grammers_client::Client;
-
 use grammers_tl_types::enums::Dialog;
 use tracing::{error, warn};
 
@@ -36,8 +33,7 @@ impl LupinTelegramGet {
 async fn download(configs: &LupinConfig) -> Result<()> {
     let client = authenticate(&configs.telegram_config).await?;
 
-    let mut dialog_iter =
-        client.iter_dialogs().limit(10 /* TODO: remove this */);
+    let mut dialog_iter = client.iter_dialogs();
     tokio::fs::create_dir_all(Path::new("backup")).await?;
     let mut tasks = Vec::new();
     while let Some(dialog) = dialog_iter.next().await? {
@@ -109,6 +105,9 @@ async fn download_dialog(
         messages,
         dialog_type,
     };
+    if backup.is_empty() {
+        return Ok(());
+    }
     tokio::fs::write(
         file,
         serde_json::to_string(&backup).context("cannot serialize backups")?,
@@ -129,6 +128,9 @@ async fn download_chat(
     let mut message_iter = message_iter;
     let mut messages = Vec::with_capacity(total);
     while let Some(msg) = message_iter.next().await? {
+        if chrono::Utc::now() - msg.date() > chrono::Duration::days(3) {
+            break;
+        }
         messages.push(Message::parse(&msg));
         if let Some(media) = msg.media() {
             let dest = format!(
@@ -153,11 +155,16 @@ async fn download_chat(
                                 err_data.downcast_ref::<InvocationError>();
                             if let Some(InvocationError::Rpc(rpc_err)) = rpc_err
                             {
-                                warn!("Error downloading downcast: {:?}", rpc_err);
+                                warn!(
+                                    "Error downloading downcast: {:?}",
+                                    rpc_err
+                                );
                                 if rpc_err.is("FLOOD_WAIT") {
+                                    let sleep_secs = rpc_err.value.unwrap_or(3);
+                                    warn!("Sleeping for {sleep_secs} seconds for flood prevention",);
                                     tokio::time::sleep(
                                         std::time::Duration::from_secs(
-                                            rpc_err.value.unwrap_or(3) as u64,
+                                            sleep_secs as u64,
                                         ),
                                     )
                                     .await;

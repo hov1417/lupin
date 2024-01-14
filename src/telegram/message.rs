@@ -1,8 +1,9 @@
 use chrono::{DateTime, Utc};
-use grammers_client::types as gr_types;
 use grammers_client::types::Media;
+use grammers_client::{types as gr_types, types};
 use grammers_tl_types::enums;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -173,6 +174,8 @@ pub struct Message {
     pub post_author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grouped_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<MessageMedia>,
 }
 
 impl Message {
@@ -198,6 +201,7 @@ impl Message {
             edit_date: msg.edit_date(),
             post_author: msg.post_author().map(String::from),
             grouped_id: msg.grouped_id(),
+            media: msg.media().and_then(parse_media),
         }
     }
 }
@@ -207,5 +211,51 @@ fn parse_sender(s: gr_types::Chat) -> Sender {
         gr_types::Chat::User(u) => Sender::User(u.full_name()),
         gr_types::Chat::Group(g) => Sender::Group(g.title().to_string()),
         gr_types::Chat::Channel(c) => Sender::Channel(c.title().to_string()),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum MessageMedia {
+    Photo(Photo),
+    // Document(Document),
+    // Sticker(Sticker),
+    // Contact(Contact),
+    // Poll(Poll),
+    // Geo(Geo),
+    // Dice(Dice),
+    // Venue(Venue),
+    // GeoLive(GeoLive),
+    // WebPage(WebPage),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PhotoSize {
+    pub photo_type: String,
+    pub size: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Photo {
+    pub id: i64,
+    pub sizes: Vec<PhotoSize>,
+}
+
+fn parse_media(raw_media: types::Media) -> Option<MessageMedia> {
+    match raw_media {
+        Media::Photo(photo) => Some(MessageMedia::Photo(Photo {
+            id: photo.id(),
+            sizes: photo
+                .thumbs()
+                .into_iter()
+                .map(|t| PhotoSize {
+                    photo_type: t.photo_type(),
+                    size: t.size(),
+                })
+                .collect(),
+        })),
+        _ => {
+            warn!("Unsupported media type: {:?}", raw_media);
+            None
+        }
     }
 }

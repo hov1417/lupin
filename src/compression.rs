@@ -62,7 +62,7 @@ impl Compressor {
     pub async fn new(out_file: &Path) -> eyre::Result<Self> {
         let file = tokio::fs::File::create(out_file)
             .await
-            .with_context(|| format!("could not create file {:?}", out_file))?;
+            .context("could not create file")?;
         let writer = ZstdEncoder::with_quality_and_params(
             file,
             async_compression::Level::Precise(10),
